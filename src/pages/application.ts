@@ -10,9 +10,10 @@ import { startCarousel } from './hero.ui';
 import { cartPage } from './cart';
 import { checkoutPage } from './checkout';
 import { bindApplicationEvents } from './application.events';
-import { homePage, renderCatalog } from './home';
-import { initMotion, initSignatureCarousel } from './motion';
+import { homePage, renderCatalog, renderFeaturedCatalog } from './home';
+import { initMotion } from './motion';
 import { productDetailsPage } from './product';
+import { shopPage } from './shop';
 import type { CatalogState } from '../modules/products';
 
 const app = document.querySelector('#app');
@@ -21,14 +22,14 @@ const catalogState: CatalogState = {
   term: '',
   sort: 'featured',
 };
-let carouselTimer: ReturnType<typeof window.setInterval> | undefined;
+let stopCarousel: (() => void) | undefined;
 
 function renderLayout(content: string) {
-  window.clearInterval(carouselTimer);
+  stopCarousel?.();
+  stopCarousel = undefined;
   if (!app) return;
   app.innerHTML = `${header()}<main class="page-transition">${content}</main>${footer()}${cartDrawer()}`;
   initMotion();
-  initSignatureCarousel();
 }
 
 function renderCatalogStatus(message: string, retry = false) {
@@ -61,10 +62,13 @@ function renderRoute() {
   if (page === 'product') renderLayout(productDetailsPage(findProduct(id)));
   else if (page === 'cart') renderLayout(cartPage());
   else if (page === 'checkout') renderLayout(checkoutPage());
-  else {
-    renderLayout(homePage());
+  else if (page === 'shop') {
+    renderLayout(shopPage(catalogState));
     renderCatalog(catalogState);
-    carouselTimer = startCarousel();
+  } else {
+    renderLayout(homePage());
+    renderFeaturedCatalog();
+    stopCarousel = startCarousel();
   }
 }
 

@@ -1,15 +1,19 @@
 const DEFAULT_TIMEOUT_MS = 8_000;
 const DEFAULT_RETRY_DELAY_MS = 1_000;
+const configuredApiBaseUrl: unknown = import.meta.env
+  .VITE_MARIGOLD_API_BASE_URL;
+const MARIGOLD_API_BASE_URL =
+  typeof configuredApiBaseUrl === 'string' && configuredApiBaseUrl.trim()
+    ? configuredApiBaseUrl.trim()
+    : 'https://marigold-api.vercel.app';
 const retryableStatuses = new Set([502, 503, 504]);
 
 export type ApiConnectionStatus =
   'idle' | 'loading' | 'retrying' | 'online' | 'error';
 
 type ApiConnectionListener = (status: ApiConnectionStatus) => void;
-type ResponseValidator<T> = (value: unknown) => value is T;
 
-interface RequestJsonOptions<T> {
-  isValidResponse: ResponseValidator<T>;
+interface RequestJsonOptions {
   retryDelayMs?: number;
   timeoutMs?: number;
 }
@@ -43,11 +47,7 @@ const shouldRetry = (error: unknown) =>
   isNetworkOrTimeoutError(error) ||
   (error instanceof ApiRequestError && retryableStatuses.has(error.status));
 
-async function requestOnce<T>(
-  url: string,
-  isValidResponse: ResponseValidator<T>,
-  timeoutMs: number,
-): Promise<T> {
+async function requestOnce(url: string, timeoutMs: number): Promise<unknown> {
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), timeoutMs);
 
@@ -60,9 +60,6 @@ async function requestOnce<T>(
       );
 
     const payload: unknown = await response.json();
-    if (!isValidResponse(payload))
-      throw new Error('API returned an invalid response.');
-
     return payload;
   } finally {
     window.clearTimeout(timeout);
@@ -76,18 +73,18 @@ export const subscribeToApiConnection = (listener: ApiConnectionListener) => {
   return () => connectionListeners.delete(listener);
 };
 
-export async function requestJson<T>(
-  url: string,
+export async function requestJson(
+  path: string,
   {
-    isValidResponse,
     retryDelayMs = DEFAULT_RETRY_DELAY_MS,
     timeoutMs = DEFAULT_TIMEOUT_MS,
-  }: RequestJsonOptions<T>,
-): Promise<T> {
+  }: RequestJsonOptions = {},
+): Promise<unknown> {
+  const url = new URL(path, MARIGOLD_API_BASE_URL).toString();
   setConnectionStatus('loading');
 
   try {
-    const response = await requestOnce(url, isValidResponse, timeoutMs);
+    const response = await requestOnce(url, timeoutMs);
     setConnectionStatus('online');
     return response;
   } catch (error) {
@@ -100,7 +97,7 @@ export async function requestJson<T>(
     await wait(retryDelayMs);
 
     try {
-      const response = await requestOnce(url, isValidResponse, timeoutMs);
+      const response = await requestOnce(url, timeoutMs);
       setConnectionStatus('online');
       return response;
     } catch (retryError) {

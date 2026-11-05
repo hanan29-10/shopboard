@@ -1,7 +1,7 @@
 import type { Product } from '../products';
 import type { Cart, CartItem } from './cart.types';
 
-const CART_KEY = 'shopboard-cart';
+const CART_KEY = 'marigold-cart';
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null;
 

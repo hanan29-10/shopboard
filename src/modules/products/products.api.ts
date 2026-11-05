@@ -3,44 +3,9 @@ import {
   isProductCategory,
   type Product,
 } from './products.types';
+import { requestJson } from '../../shared/api/client';
 
-const PRODUCTS_ENDPOINT = 'https://moron-api-kappa.vercel.app/api/products';
-const REQUEST_TIMEOUT_MS = 8_000;
-const RETRY_DELAY_MS = 1_000;
-const retryableStatuses = new Set([502, 503, 504]);
 let inFlightRequest: Promise<ProductsResponse> | undefined;
-
-export type ProductsConnectionStatus =
-  'idle' | 'loading' | 'retrying' | 'online' | 'error';
-
-type ProductsConnectionListener = (status: ProductsConnectionStatus) => void;
-
-let connectionStatus: ProductsConnectionStatus = 'idle';
-const connectionListeners = new Set<ProductsConnectionListener>();
-
-const setConnectionStatus = (status: ProductsConnectionStatus) => {
-  connectionStatus = status;
-  connectionListeners.forEach((listener) => listener(status));
-};
-
-export const getProductsConnectionStatus = () => connectionStatus;
-
-export const subscribeToProductsConnection = (
-  listener: ProductsConnectionListener,
-) => {
-  connectionListeners.add(listener);
-  return () => connectionListeners.delete(listener);
-};
-
-class ProductsRequestError extends Error {
-  constructor(
-    message: string,
-    readonly status: number,
-  ) {
-    super(message);
-    this.name = 'ProductsRequestError';
-  }
-}
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null;
@@ -82,70 +47,33 @@ const isProductsResponse = (value: unknown): value is ProductsResponse => {
   );
 };
 
-const wait = (duration: number) =>
-  new Promise<void>((resolve) => window.setTimeout(resolve, duration));
+const localImagePath = (image: string) => {
+  const filename = image.split('/').pop();
+  if (!filename?.startsWith('moron-')) return image;
+  return `/images/${filename.replace(/^moron-/, 'marigold-')}`;
+};
 
-const isNetworkOrTimeoutError = (error: unknown) =>
-  error instanceof TypeError ||
-  (error instanceof DOMException && error.name === 'AbortError');
-
-const shouldRetry = (error: unknown) =>
-  isNetworkOrTimeoutError(error) ||
-  (error instanceof ProductsRequestError &&
-    retryableStatuses.has(error.status));
-
-async function requestProducts(): Promise<ProductsResponse> {
-  const controller = new AbortController();
-  const timeout = window.setTimeout(
-    () => controller.abort(),
-    REQUEST_TIMEOUT_MS,
-  );
-
-  try {
-    const response = await fetch(PRODUCTS_ENDPOINT, {
-      signal: controller.signal,
-    });
-    if (!response.ok)
-      throw new ProductsRequestError(
-        `Products request failed (${response.status}).`,
-        response.status,
-      );
-
-    const payload: unknown = await response.json();
-    if (!isProductsResponse(payload))
-      throw new Error('Products API returned an invalid response.');
-
-    return payload;
-  } finally {
-    window.clearTimeout(timeout);
-  }
-}
-
-async function requestProductsWithRetry(): Promise<ProductsResponse> {
-  try {
-    return await requestProducts();
-  } catch (error) {
-    if (!shouldRetry(error)) throw error;
-    setConnectionStatus('retrying');
-    await wait(RETRY_DELAY_MS);
-    return requestProducts();
-  }
-}
+const normalizeProductsResponse = (
+  response: ProductsResponse,
+): ProductsResponse => ({
+  ...response,
+  items: response.items.map((product) => ({
+    ...product,
+    image: localImagePath(product.image),
+    secondaryImage: product.secondaryImage
+      ? localImagePath(product.secondaryImage)
+      : undefined,
+  })),
+});
 
 export function fetchProducts(): Promise<ProductsResponse> {
   if (inFlightRequest) return inFlightRequest;
 
-  setConnectionStatus('loading');
-  const request = requestProductsWithRetry().then(
-    (response) => {
-      setConnectionStatus('online');
-      return response;
-    },
-    (error: unknown) => {
-      setConnectionStatus('error');
-      throw error;
-    },
-  );
+  const request = requestJson('/api/products').then((payload) => {
+    if (!isProductsResponse(payload))
+      throw new Error('Products API returned an invalid response.');
+    return normalizeProductsResponse(payload);
+  });
   const sharedRequest = request.finally(() => {
     if (inFlightRequest === sharedRequest) inFlightRequest = undefined;
   });

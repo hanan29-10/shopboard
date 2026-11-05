@@ -1,2 +1,2 @@
 /** Public home-page API. */
-export { homePage, renderCatalog } from './ui/homePage';
+export { homePage, renderCatalog, renderFeaturedCatalog } from './ui/homePage';

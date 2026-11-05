@@ -189,7 +189,8 @@ export function bindApplicationEvents({
       event.target.reset();
       const newsletterMessage = document.querySelector('.newsletter-message');
       if (newsletterMessage instanceof HTMLElement)
-        newsletterMessage.textContent = 'Thank you — you are on the list.';
+        newsletterMessage.textContent =
+          'Email looks good. Newsletter sign-up is not connected yet.';
       return;
     }
     if (!isForm(event.target) || event.target.id !== 'checkout-form') return;

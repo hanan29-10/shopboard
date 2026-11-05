@@ -1,4 +1,4 @@
-# MORON ShopBoard Agent Instructions
+# MARIGOLD Agent Instructions
 
 ## Technology stack
 
